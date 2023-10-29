@@ -66,6 +66,8 @@ class NCBI:
         self.email = check_ncbi_param(email, 'email')
         self.tool = check_ncbi_param(tool, 'tool')
         self.return_ranks = return_ranks
+        self.disambiguate = []
+        self.no_match = []
 
     def make_req(
             self,
@@ -175,22 +177,6 @@ class NCBI:
         id_list = req.json()['esearchresult']['idlist']
         return id_list
 
-        # think I'll handle the checks further down instead
-        # if return_raw:
-        #     return id_list
-
-        # if len(id_list) > 1:
-        #     raise ValueError(f'Expected API to return one id, but it returned \
-        #                      {len(id_list)} ids instead')
-        # # This should be ok
-        # # if not id_list:
-        # #     raise ValueError(f'Request returned empty id_list: {req.text}')
-        # if not id_list[0].isdigit():
-        #     raise ValueError(f'Expected API to return one taxon id consisting \
-        #                     of all decimal characters. Returned {id_list[0]} \
-        #                     instead.')
-        # return int(id_list[0])
-
     def etree_from_id(
             self,
             taxid: int):
@@ -279,11 +265,13 @@ class NCBI:
         # given to a single organism. 
         # The user will need to disambiguate the name
         if len(taxid_list) > 1:
+            self.disambiguate.append(organism)
             return False
 
         # If no taxon ids were returned, that means we weren't able to find a
         # match. The user will have to check the spelling of the name.
         if not taxid_list:
+            self.no_match.append(organism)
             return False
         
         if not taxid_list[0].isdigit():
@@ -291,8 +279,6 @@ class NCBI:
                             of all decimal characters. Returned {id_list[0]} \
                             instead.')
         taxid = int(taxid_list[0])
-
-
         tree = self.etree_from_id(taxid)
         tax_dict = self.etree_to_dict(tree)
         return tax_dict
@@ -317,7 +303,6 @@ class NCBI:
         taxon_info = self.organism_to_dict(org_name)
         return taxon_info
 
-    ###
     ### TODO: REMOVE - this should be in a subclass
     ###
     # def preprocess_name(
