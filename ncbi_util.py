@@ -273,19 +273,25 @@ class NCBI:
                 tax_dict: dict - a dictionary containing the taxonomy data about
                     "organism" which was returned by the NCBI API
         '''
-        taxid = self.organism_to_id(organism, verbose)
-        if len(id_list) > 1:
-            raise ValueError(f'Expected API to return one id, but it returned \
-                             {len(id_list)} ids instead')
+        taxid_list = self.organism_to_id(organism, verbose)
 
-        if not id_list:
-            return None
-        # #     raise ValueError(f'Request returned empty id_list: {req.text}')
-        # if not id_list[0].isdigit():
-        #     raise ValueError(f'Expected API to return one taxon id consisting \
-        #                     of all decimal characters. Returned {id_list[0]} \
-        #                     instead.')
-        # return int(id_list[0])
+        # If more than 1 taxon id is returned that means we can't match the name
+        # given to a single organism. 
+        # The user will need to disambiguate the name
+        if len(taxid_list) > 1:
+            return False
+
+        # If no taxon ids were returned, that means we weren't able to find a
+        # match. The user will have to check the spelling of the name.
+        if not taxid_list:
+            return False
+        
+        if not taxid_list[0].isdigit():
+            raise ValueError(f'Expected API to return one taxon id consisting \
+                            of all decimal characters. Returned {id_list[0]} \
+                            instead.')
+        taxid = int(taxid_list[0])
+
 
         tree = self.etree_from_id(taxid)
         tax_dict = self.etree_to_dict(tree)
@@ -306,7 +312,7 @@ class NCBI:
                         - scientific name
                         - taxonomic ID
                         - lineage 
-                    If a match cannot be made, None is returned instead.
+                    If a match cannot be made, False is returned instead.
         """
         taxon_info = self.organism_to_dict(org_name)
         return taxon_info
