@@ -23,6 +23,9 @@ SLEEP_INTERVAL = .5
 RETURN_RANKS = ['order', 'family', 'genus', 'species']
 JSON_PATH = 'data/IDA/json'
 
+# TaxonInfo object
+TaxonInfo = namedtuple('TaxonInfo', ['rank', 'sci_name', 'taxon_id', 'lineage'])
+
 def check_ncbi_param(ncbi_param: str, param_name: str):
     """ Input:
             ncbi_param: str - the value of a parameter we're going to pass to
@@ -170,18 +173,23 @@ class NCBI:
             print('Starting organism:', organism)
         req = self.esearch_req(organism)
         id_list = req.json()['esearchresult']['idlist']
-        if return_raw:
-            return id_list
-        if len(id_list) > 1:
-            raise ValueError(f'Expected API to return one id, but it returned \
-                             {len(id_list)} ids instead')
-        if not id_list:
-            raise ValueError(f'Request returned empty id_list: {req.text}')
-        if not id_list[0].isdigit():
-            raise ValueError(f'Expected API to return one taxon id consisting \
-                             of all decimal characters. Returned {id_list[0]} \
-                                instead.')
-        return int(id_list[0])
+        return id_list
+
+        # think I'll handle the checks further down instead
+        # if return_raw:
+        #     return id_list
+
+        # if len(id_list) > 1:
+        #     raise ValueError(f'Expected API to return one id, but it returned \
+        #                      {len(id_list)} ids instead')
+        # # This should be ok
+        # # if not id_list:
+        # #     raise ValueError(f'Request returned empty id_list: {req.text}')
+        # if not id_list[0].isdigit():
+        #     raise ValueError(f'Expected API to return one taxon id consisting \
+        #                     of all decimal characters. Returned {id_list[0]} \
+        #                     instead.')
+        # return int(id_list[0])
 
     def etree_from_id(
             self,
@@ -203,7 +211,7 @@ class NCBI:
                 root: defusedxml.ElementTree - an xml document as returned by 
                     the NCBI API efetch endpoint.
             Output:
-                taxon_info: dict - the keys are:
+                taxon_info: TaxonInfo namedtuple - the keys are:
                     - rank: the rank of the organism, i.e. order, phylum, etc.
                     - sci_name: the scientific name of the organism
                     - taxon_id: the taxonomic id (an int)
@@ -233,7 +241,7 @@ class NCBI:
             lineage[rank].append(info)
             
         taxon_info['lineage'] = lineage
-        return taxon_info
+        return TaxonInfo(**taxon_info)
 
     def parse_taxon_element(
             self,
@@ -270,6 +278,25 @@ class NCBI:
         tax_dict = self.etree_to_dict(tree)
         return tax_dict
 
+    def match(
+        self,
+        org_name: str,
+        verbose: bool = False):
+        """ Input:
+                org_name: str - the name of the organism we want to try to
+                    find a match for in the NCBI database.
+                verbose: bool - if True, some information will be printed as
+                    the data is retrieved.
+            Output:
+                taxon_info: TaxonInfo - a named tuple containing the organism's:
+                        - rank
+                        - scientific name
+                        - taxonomic ID
+                        - lineage 
+                    If a match cannot be made, None is returned instead.
+        """
+        taxon_info = self.organism_to_dict(org_name)
+        return taxon_info
     ###
     ### TODO: REMOVE - this should be in a subclass
     ###
