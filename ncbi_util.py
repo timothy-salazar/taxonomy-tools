@@ -64,6 +64,9 @@ def default_preprocessor(raw_name: str):
     write your own processor that's keyed to the idiosyncracies of the 
     particular dataset you're working with.
     If there are misspelled names you'll have to go in and change them.
+
+    TODO: think about ading some sensible "space between words" handling other
+    than underscores ('+','-', ' ', etc.). Maybe camelcase too
     """
     # if there are numbers in the name, we remove them
     raw_name = re.sub('[0-9]', '', raw_name)
@@ -84,6 +87,8 @@ class NCBI:
             tool: str = TOOL,
             preprocessor: func = None,
             return_ranks: list = None,
+            max_attempts: int = 3,
+            timeout: int = 10
             ):
         """ Input:
                 email: str - the email address that will be used when making the
@@ -91,6 +96,14 @@ class NCBI:
                     internal spaces.
                 tool: str - the name of application making the E-utility call.
                     Value must be a string with no internal spaces.
+                preprocessor: func - a function to pre-process the organism
+                    names being fed to this. If None, the default preprocessor
+                    is used instead
+                return_ranks: list - the ranks that will be kept and returned
+                max_attempts: int - the number of retries to make  to the API
+                    before giving up
+                timeout: int - the length of time in seconds to wait before 
+                    assuming something went wrong with the request
 
         Information on parameters, syntax, etc. for the API (including the
         "tool" and "email" parameters for this class) can be found here:
@@ -103,20 +116,19 @@ class NCBI:
         self.disambiguate = []
         self.no_match = []
         self.organisms_known = dict()
+        if not preprocessor:
+            self.preprocessor = default_preprocessor
 
     def make_req(
             self,
             url: str,
             payload: dict,
-            max_attempts: int = 3,
-            timeout: int = 10):
+            ):
         """ Input:
                 url: str - the url we want to make the request to
                 payload: dict - contains the values we want to pass as parameters
                     in the URL's query string
-                max_attempts: int - the number of retries to make before giving up
-                timeout: int - the length of time in seconds to wait before assuming
-                    something went wrong with the request
+                
             Output:
                 req: requests.Response - the response returned by the NCBI API
 
@@ -318,8 +330,6 @@ class NCBI:
         tax_dict = self.etree_to_dict(tree)
         return tax_dict
 
-
-
     def match(
         self,
         org_name: str,
@@ -337,149 +347,17 @@ class NCBI:
                         - lineage 
                     If a match cannot be made, False is returned instead.
         """
+        # skips the call to the API if the data for the organism has already
+        # been retrieved
+        if org_name in self.organisms_known:
+            return self.organisms_known[org_name]
+
         taxon_info = self.organism_to_dict(org_name)
         self.organisms_known[org_name] = taxon_info
         return taxon_info
 
+    def fix(self,
+        org_name: str,
+        verbose: bool = False):
 
-    ### TODO: REMOVE - this should be in a subclass
-    ###
-    # def preprocess_name(
-    #         self,
-    #         dir_name: str):
-    #     """ Input:
-    #             dir_name: str - the name of a directory. This name should correspond
-    #                 to the name of an organism. i.e. 'Asellus_aquaticus', 'Chelifera',
-    #                 'Ephemerella_aroni_aurivillii', etc.
-    #         Output:
-    #             str - the name of the organism, processed to obviate the issues I ran
-    #                 into with the single dataset I'm working with right now:
-    #                     - organism names that end with "_sp", "_adult", or "_larva"
-    #                     - organism names that contain more than 2 parts (this may be due
-    #                     to ambiguity - I might reexamine this later)
-        
-    #     This isn't perfect, nor is it magic.
-    #     If there are misspelled names you'll have to go in and change them.
-    #     """
-    #     parts = re.sub('_sp|_adult|_larva', '', dir_name).split('_')
-    #     if len(parts) > 1:
-    #         return '+'.join([parts[0], parts[-1]])
-    #     else:
-    #         return parts[0]
-
-    # def get_names_from_dataset(path: str):
-    #     """ Input:
-    #             path: str - the path to the directory containing the dataset.
-    #                 This assumes that the images are stored in directories whose
-    #                 names are formatted as "Genus_species".
-    #         Output:
-    #             organism_list: list of strings - the names of the directories.
-    #     """
-    #     p = Path(path)
-    #     organism_list = [x.name for x in p.iterdir() if x.is_dir()]
-    #     return organism_list
-
-    # def dict_from_path(file_path: str):
-    #     """ Input:
-    #             file_path: str - the path to a file containing json data. 
-    #         Output:
-    #             a dictionary containing the data in the file specified by 
-    #             "file_path". If the file does not exist, an empty dictionary is
-    #             returned instead.
-    #     """
-    #     path = Path(file_path)
-    #     if path.exists():
-    #         with path.open() as f:
-    #             return json.load(f)
-    #     else:
-    #         return dict()
-        
-    # def get_taxon_data(taxon_path:str, 
-    #                 dir_to_taxon:str, 
-    #                 name_to_taxon:str, 
-    #                 failed_path:str, 
-    #                 preprocessor):
-    #     """ Input:
-    #             taxon_path: str - the path of the json file in which we want to store
-    #                 our taxon data. If the file doesn't exist it will be created.
-    #             preprocessor: function - a function that will take a raw directory name
-    #                 and handle any weird stuff in it (removing numbers, for exampe)
-    #             typo_path: str - the path to a json file containing a dictionary
-    #                 that maps the names of directories that have been misspelled to
-    #                 corrected versions.
-    #                 I'm doing this as a dictionary in a separate json file instead
-    #                 of the simpler option of just changing the name of the directory
-    #                 manually because I might need to wipe the data - this happened 
-    #                 once when an image got corrupted by Tensorflow and it was easier
-    #                 to just wipe the directory and unzip it again.
-    #                 It's not just a dict at the top of the other json doc for
-    #                 similar reasons.
-    #         Output:
-    #             taxon_data: dict - a dictionary in which the keys are the names of
-    #                 directories, and the values are dictionaries containing the
-    #                 taxonomic lineage information returned by the API.
-    #     """
-    #     taxon_data = dict_from_path(taxon_path)
-    #     dir2taxon = dict_from_path(dir_to_taxon)
-    #     name2taxon = dict_from_path(name_to_taxon)
-    #     failed_to_retrieve = list(dict_from_path(failed_path))
-        
-    #     directory_names = set(get_names_from_dataset(DATA_PATH))
-    #     new_directories = directory_names.difference(dir2taxon.keys())
-    #     directory_names = list(directory_names)
-    #     failed_to_retrieve = list()
-    #     print(f'Found {len(directory_names)} directories:')
-    #     print(f'\t- {len(directory_names)-len(new_directories)} directories already\
-    #     saved to json')
-    #     print(f'\t- {len(new_directories)} new directories to retrieve data for\n')
-        
-    #     progress_bar = tqdm(total=len(new_directories))
-    #     for v, dir_name in enumerate(new_directories):
-            
-    #         organism_name = preprocessor(dir_name)
-    #         organism_name = preprocess_name(organism_name)
-    # #         print(f'organism_name: {organism_name}')
-    #         if organism_name in name2taxon:
-    #             dir2taxon[dir_name] = name2taxon[organism_name]
-    #             continue
-    #         try:
-    #             # We want a dictionary where the keys are the names of directories,
-    #             # so we only clean up the directory name with preprocess_name() and
-    #             # get "organism_name" to make the API call
-                
-    #             taxon_dict = organism_to_dict(organism_name)
-    #             taxon_id = taxon_dict['taxon_id']
-    #             name2taxon[organism_name] = taxon_id
-    #             dir2taxon[dir_name] = taxon_id
-    #             taxon_data[taxon_id] = taxon_dict
-    #             progress_bar.reset()
-    #             progress_bar.update(v)
-    #             progress_bar.set_description(desc=dir_name.rjust(20, '-')[:20])
-    #             # Speed isn't important (we're putting in a pause in the function that makes
-    #             # the requests anyway, to be considerate to the API we're hitting), so there's
-    #             # no reason not to just write to disk on every loop 
-    #             with open(taxon_path, 'w+') as f:
-    #                 json.dump(taxon_data, f)
-    #             with open(dir_to_taxon, 'w+') as f:
-    #                 json.dump(dir2taxon, f)
-    #             with open(name_to_taxon, 'w+') as f:
-    #                 json.dump(name2taxon, f)
-    #         except ValueError:
-                
-    #             progress_bar.reset()
-    #             progress_bar.update(v)
-    #             progress_bar.set_description(desc=dir_name.rjust(20, '-')[:20])
-    #             if organism_name in failed_to_retrieve:
-    #                 continue
-    #             print(f'Failed to retrieve data for organism "{organism_name}"')
-    #             failed_to_retrieve.append(organism_name)
-    #             with open(failed_path,'w+') as f:
-    #                 json.dump(failed_to_retrieve, f)
-    # #         if v > 100:
-    # #             break
-    #     progress_bar.close()
-    #     print(f'\nData for {len(new_directories) - len(failed_to_retrieve)} \
-    #         directories successfully retrieved')
-    #     print(f'Failed to retrieve {len(failed_to_retrieve)} directories:')
-    #     print(failed_to_retrieve)
-    #     return taxon_data
+        pass
