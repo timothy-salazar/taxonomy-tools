@@ -44,11 +44,45 @@ def check_ncbi_param(ncbi_param: str, param_name: str):
                              containing no internal spaces')
     return ncbi_param
 
+def default_preprocessor(raw_name: str):
+    """ Input:
+            raw_name: str - the name of an organism. i.e. 'Asellus_aquaticus', 
+                'Chelifera', 'Ephemerella_aroni_aurivillii', etc.
+                The point of this 
+        Output:
+            str - the name of the organism, processed to obviate the issues I 
+                ran into with the dataset I'm working with right now:
+                    - organism names that end with "_sp", "_adult", or "_larva"
+                    - organism names that contain more than 2 parts (this may be
+                        due to ambiguity - I might reexamine this later)
+    
+    This is an example of a preprocessor for the NCBI class. My particular use
+    case was processing directory names. 
+    This isn't perfect, nor is it magic.
+    It makes assumptions that might be false (that's why I'm calling it an 
+    "example preprocessor"). It's moderately likely that you might need to 
+    write your own processor that's keyed to the idiosyncracies of the 
+    particular dataset you're working with.
+    If there are misspelled names you'll have to go in and change them.
+    """
+    # if there are numbers in the name, we remove them
+    raw_name = re.sub('[0-9]', '', raw_name)
+    # gets rid of some extra bits on the end
+    # NOTE: might want to add a "suffixes" argument or something to make this
+    # configurable
+    raw_name = re.sub('_sp$|_adult$|_larva$', '', raw_name)
+    parts = raw_name.split('_')
+    if len(parts) > 1:
+        return '+'.join([parts[0], parts[-1]])
+    else:
+        return parts[0]
+
 class NCBI:
     def __init__(
             self,
             email: str = EMAIL,
             tool: str = TOOL,
+            preprocessor: func = None,
             return_ranks: list = None,
             ):
         """ Input:
@@ -68,6 +102,7 @@ class NCBI:
         self.return_ranks = return_ranks
         self.disambiguate = []
         self.no_match = []
+        self.organisms_known = dict()
 
     def make_req(
             self,
@@ -283,6 +318,8 @@ class NCBI:
         tax_dict = self.etree_to_dict(tree)
         return tax_dict
 
+
+
     def match(
         self,
         org_name: str,
@@ -301,7 +338,9 @@ class NCBI:
                     If a match cannot be made, False is returned instead.
         """
         taxon_info = self.organism_to_dict(org_name)
+        self.organisms_known[org_name] = taxon_info
         return taxon_info
+
 
     ### TODO: REMOVE - this should be in a subclass
     ###
