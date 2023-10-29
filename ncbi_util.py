@@ -274,6 +274,19 @@ class NCBI:
                     "organism" which was returned by the NCBI API
         '''
         taxid = self.organism_to_id(organism, verbose)
+        if len(id_list) > 1:
+            raise ValueError(f'Expected API to return one id, but it returned \
+                             {len(id_list)} ids instead')
+
+        if not id_list:
+            return None
+        # #     raise ValueError(f'Request returned empty id_list: {req.text}')
+        # if not id_list[0].isdigit():
+        #     raise ValueError(f'Expected API to return one taxon id consisting \
+        #                     of all decimal characters. Returned {id_list[0]} \
+        #                     instead.')
+        # return int(id_list[0])
+
         tree = self.etree_from_id(taxid)
         tax_dict = self.etree_to_dict(tree)
         return tax_dict
@@ -297,6 +310,7 @@ class NCBI:
         """
         taxon_info = self.organism_to_dict(org_name)
         return taxon_info
+
     ###
     ### TODO: REMOVE - this should be in a subclass
     ###
